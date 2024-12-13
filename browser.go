@@ -2,6 +2,7 @@ package lwb
 
 import (
 	"net/http"
+	"net/http/cookiejar"
 	"strings"
 	"sync"
 
@@ -9,25 +10,32 @@ import (
 	"golang.org/x/net/html"
 )
 
-type (
-	Browser struct {
-		url       string
-		userAgent string
-		document  *html.Node
-		mut       sync.RWMutex
+type Browser struct {
+	url       string
+	userAgent string
+	http      *http.Client
+	document  *html.Node
+	cookies   *cookiejar.Jar
+	mut       sync.RWMutex
+}
+
+func NewBrowser(userAgent string) (*Browser, error) {
+	cj, err := cookiejar.New(nil)
+	if err != nil {
+		return nil, err
 	}
 
-	Element struct {
-		node *html.Node
+	hc := &http.Client{
+		Jar: cj,
 	}
-)
 
-func NewBrowser(userAgent string) *Browser {
 	b := &Browser{
 		userAgent: userAgent,
+		cookies:   cj,
+		http:      hc,
 	}
 
-	return b
+	return b, nil
 }
 
 func (b *Browser) Get(url string) error {
@@ -36,13 +44,14 @@ func (b *Browser) Get(url string) error {
 
 	b.url = url
 
-	rest, err := http.Get(url)
+	resp, err := b.http.Get(url)
 	if err != nil {
 		return err
 	}
-	defer rest.Body.Close()
+	defer resp.Body.Close()
 
-	b.document, err = html.Parse(rest.Body)
+	// Parse the HTML document
+	b.document, err = html.Parse(resp.Body)
 	if err != nil {
 		return err
 	}
